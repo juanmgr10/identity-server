@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: identity-server-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-identity}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-identity_dev_password}
+      POSTGRES_DB: ${DB_NAME:-identity_server}
+    ports:
+      - '${DB_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-identity} -d ${DB_NAME:-identity_server}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:
