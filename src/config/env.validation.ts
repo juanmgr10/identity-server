@@ -66,6 +66,30 @@ export class EnvironmentVariables {
   @IsBoolean()
   @IsOptional()
   DB_LOGGING: boolean = false;
+
+  // ─── JWT (RS256) ────────────────────────────────────────────────────────
+  @IsString()
+  @IsNotEmpty()
+  JWT_ISSUER!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  JWT_AUDIENCE!: string;
+
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  @Max(86400)
+  @IsOptional()
+  JWT_ACCESS_TTL_SECONDS: number = 900;
+
+  @IsString()
+  @IsNotEmpty()
+  JWT_PRIVATE_KEY_PATH!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  JWT_PUBLIC_KEY_PATH!: string;
 }
 
 /**

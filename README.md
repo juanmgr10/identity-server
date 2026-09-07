@@ -16,21 +16,27 @@ docker compose up -d
 # 3. Instalar dependencias
 npm install
 
-# 4. Arrancar en modo desarrollo
+# 4. Generar claves JWT RS256 (crea ./secrets/jwt-private.pem y jwt-public.pem)
+npm run keys:generate
+
+# 5. Arrancar en modo desarrollo
 npm run start:dev
 ```
 
 ## Comandos
 
-| Comando             | Descripción                          |
-| ------------------- | ------------------------------------ |
-| `npm run build`     | Compilar a `dist/`                   |
-| `npm run start:dev` | Arrancar con hot-reload              |
-| `npm run lint`      | Lint + auto-fix                      |
-| `npm test`          | Tests unitarios (Jest)               |
-| `npm run test:e2e`  | Tests e2e (supertest)                |
+| Comando                | Descripción                          |
+| ---------------------- | ------------------------------------ |
+| `npm run build`        | Compilar a `dist/`                   |
+| `npm run start:dev`    | Arrancar con hot-reload              |
+| `npm run keys:generate`| Generar el par de claves JWT RS256   |
+| `npm run lint`         | Lint + auto-fix                      |
+| `npm test`             | Tests unitarios (Jest)               |
+| `npm run test:e2e`     | Tests e2e (supertest)                |
 
 ## Configuración
 
 Toda la configuración se valida al arrancar (ver `src/config/env.validation.ts`).
-Variables principales en `.env.example` (aplicación + conexión a PostgreSQL).
+Variables principales en `.env.example` (aplicación, PostgreSQL, JWT).
+La clave privada JWT vive en `./secrets/` (gitignored); la pública se expone en
+`GET /.well-known/jwks.json`.

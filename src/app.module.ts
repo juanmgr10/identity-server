@@ -1,9 +1,13 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule, TypeOrmModuleOptions } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { loadConfig } from './config/configuration';
+import type { DatabaseConfig } from './config/configuration';
 import { validateEnv } from './config/env.validation';
+import { buildDataSourceOptions } from './database/typeorm.options';
+import { CryptoModule } from './crypto/crypto.module';
 
 @Module({
   imports: [
@@ -13,6 +17,16 @@ import { validateEnv } from './config/env.validation';
       load: [loadConfig],
       validate: validateEnv,
     }),
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService): TypeOrmModuleOptions => ({
+        ...buildDataSourceOptions(
+          configService.get<DatabaseConfig>('database')!,
+        ),
+        autoLoadEntities: true,
+      }),
+    }),
+    CryptoModule,
   ],
   controllers: [AppController],
   providers: [AppService],
