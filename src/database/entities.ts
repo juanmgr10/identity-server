@@ -11,7 +11,21 @@
  *   export const entities: EntityClass[] = [Organization, User, Membership];
  */
 
+import { Organization } from '../entities/organization.entity';
+import { User } from '../entities/user.entity';
+import { Membership } from '../entities/membership.entity';
+import { Session } from '../entities/session.entity';
+import { RefreshToken } from '../entities/refresh-token.entity';
+import { SecurityEvent } from '../entities/security-event.entity';
+
 /** Clase de entidad registrable en TypeORM (construible sin argumentos). */
 export type EntityClass = new (...args: never[]) => object;
 
-export const entities: EntityClass[] = [];
+export const entities: EntityClass[] = [
+  Organization,
+  User,
+  Membership,
+  Session,
+  RefreshToken,
+  SecurityEvent,
+];

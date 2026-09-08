@@ -16,11 +16,17 @@ export interface JwtConfig {
   publicKeyPath: string;
 }
 
+export interface AuthConfig {
+  /** Vida del refresh token opaco, en segundos (por defecto 30 días). */
+  refreshTokenTtlSeconds: number;
+}
+
 export interface AppConfig {
   nodeEnv: string;
   port: number;
   database: DatabaseConfig;
   jwt: JwtConfig;
+  auth: AuthConfig;
 }
 
 /**
@@ -47,5 +53,10 @@ export const loadConfig = (): AppConfig => ({
       process.env.JWT_PRIVATE_KEY_PATH ?? './secrets/jwt-private.pem',
     publicKeyPath:
       process.env.JWT_PUBLIC_KEY_PATH ?? './secrets/jwt-public.pem',
+  },
+  auth: {
+    refreshTokenTtlSeconds: Number(
+      process.env.REFRESH_TOKEN_TTL_SECONDS ?? 2592000,
+    ),
   },
 });

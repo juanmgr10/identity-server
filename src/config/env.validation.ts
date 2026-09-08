@@ -90,6 +90,13 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   JWT_PUBLIC_KEY_PATH!: string;
+
+  // ─── Auth ───────────────────────────────────────────────────────────────
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  REFRESH_TOKEN_TTL_SECONDS: number = 2592000;
 }
 
 /**

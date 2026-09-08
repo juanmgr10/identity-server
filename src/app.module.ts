@@ -8,6 +8,8 @@ import type { DatabaseConfig } from './config/configuration';
 import { validateEnv } from './config/env.validation';
 import { buildDataSourceOptions } from './database/typeorm.options';
 import { CryptoModule } from './crypto/crypto.module';
+import { SecurityModule } from './security/security.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
@@ -27,6 +29,8 @@ import { CryptoModule } from './crypto/crypto.module';
       }),
     }),
     CryptoModule,
+    SecurityModule,
+    AuthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
