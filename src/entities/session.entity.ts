@@ -8,9 +8,11 @@ import { BaseEntity } from './base/base.entity';
  * access tokens para invalidar JWT emitidos antes de expirar (Fase 2,
  * pasos 10-12).
  *
- * `ipHash` y `userAgentHash` guardan un hash y nunca el valor en claro:
- * bastan para detectar cambios de dispositivo/red sin persistir datos
- * identificables del cliente.
+ * `ipHash` y `userAgentHash` siguen guardando solo el hash (se usan para la
+ * detección de reutilización del paso 10). `ip` y `userAgent` (paso 12)
+ * guardan el valor en claro únicamente para que el usuario pueda reconocer
+ * sus propias sesiones activas en `GET /auth/sessions` (igual que ya hace
+ * `SecurityEvent` con sus propios campos `ip`/`userAgent`).
  */
 @Entity('sessions')
 export class Session extends BaseEntity {
@@ -31,6 +33,14 @@ export class Session extends BaseEntity {
   /** Hash del User-Agent del cliente en el momento de crear la sesión. */
   @Column({ type: 'varchar', length: 64, name: 'user_agent_hash' })
   userAgentHash!: string;
+
+  /** IP en claro del cliente al crear la sesión (solo para mostrarla al usuario; ver doc de la clase). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  ip!: string | null;
+
+  /** User-Agent en claro del cliente al crear la sesión (solo para mostrarlo al usuario; ver doc de la clase). */
+  @Column({ type: 'varchar', length: 512, name: 'user_agent', nullable: true })
+  userAgent!: string | null;
 
   /** Última vez que la sesión se usó para emitir o rotar un token. */
   @Column({ type: 'timestamptz', name: 'last_seen_at' })

@@ -17,3 +17,19 @@ export const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 
 /** Duración del bloqueo de cuenta tras superar `MAX_FAILED_LOGIN_ATTEMPTS`, en minutos. */
 export const ACCOUNT_LOCKOUT_MINUTES = 15;
+
+/** Nombre de la cookie httpOnly que transporta el refresh token para clientes web. */
+export const REFRESH_TOKEN_COOKIE_NAME = 'refresh_token';
+
+/**
+ * `Path` de la cookie del refresh token: se restringe a la única ruta que
+ * lo necesita para que el navegador no lo adjunte a ninguna otra petición.
+ */
+export const REFRESH_TOKEN_COOKIE_PATH = '/auth/refresh';
+
+/**
+ * Header con el que un cliente API (sin cookie jar) pide recibir el
+ * refresh token también en el JSON de respuesta, en vez de depender solo
+ * de la cookie httpOnly pensada para aplicaciones web.
+ */
+export const API_CLIENT_TYPE_HEADER = 'x-client-type';

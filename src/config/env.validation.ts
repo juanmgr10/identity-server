@@ -97,6 +97,12 @@ export class EnvironmentVariables {
   @Min(1)
   @IsOptional()
   REFRESH_TOKEN_TTL_SECONDS: number = 2592000;
+
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  REFRESH_REUSE_GRACE_SECONDS: number = 5;
 }
 
 /**

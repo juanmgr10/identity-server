@@ -4,18 +4,10 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { createHash, randomUUID } from 'node:crypto';
-import { DataSource, EntityManager, Repository } from 'typeorm';
-import type { AuthConfig, JwtConfig } from '../../config/configuration';
-import { JwtService } from '../../crypto/jwt/jwt.service';
+import { DataSource, Repository } from 'typeorm';
 import { Membership } from '../../entities/membership.entity';
 import { Organization } from '../../entities/organization.entity';
-import {
-  RefreshToken,
-  RefreshTokenStatus,
-} from '../../entities/refresh-token.entity';
 import {
   SecurityEvent,
   SecurityEventType,
@@ -23,24 +15,23 @@ import {
 import { Session } from '../../entities/session.entity';
 import { User, UserStatus } from '../../entities/user.entity';
 import { PasswordService } from '../../security/password.service';
-import { TokenService } from '../../security/token.service';
 import {
   ACCOUNT_LOCKOUT_MINUTES,
-  KNOWN_ROLE_NAMES,
   MAX_FAILED_LOGIN_ATTEMPTS,
   OWNER_ROLE_ID,
 } from './auth.constants';
+import {
+  hashClientInfo,
+  normalizeEmail,
+  recordSecurityEvent,
+  slugify,
+} from './auth.util';
+import type { ChangePasswordDto } from './dto/change-password.dto';
 import type { LoginDto } from './dto/login.dto';
 import type { RegisterDto } from './dto/register.dto';
-import type { AuthTokens, RequestContext } from './auth.types';
-
-/** Datos mínimos de sesión/rol necesarios para emitir un par de tokens. */
-interface IssueTokensInput {
-  user: User;
-  orgId: string;
-  roleId: string;
-  session: Session;
-}
+import { RefreshTokenService } from './refresh-token.service';
+import { SessionService } from './session.service';
+import type { AuthContext, AuthTokens, RequestContext } from './auth.types';
 
 /**
  * Registro, login y emisión inicial de tokens (Fase 1, pasos 7-8).
@@ -49,13 +40,12 @@ interface IssueTokensInput {
  * membresía "owner", sesión y el primer par de tokens se crean juntos o no
  * se crea nada. `login` verifica credenciales, aplica el bloqueo por
  * intentos fallidos y, si son correctas, emite un nuevo par de tokens para
- * una nueva sesión.
+ * una nueva sesión. La emisión del par de tokens en sí (firma del access
+ * token y persistencia del refresh token) vive en `RefreshTokenService`,
+ * que también es dueño de la rotación (Fase 2, paso 10).
  */
 @Injectable()
 export class AuthService {
-  private readonly jwtConfig: JwtConfig;
-  private readonly authConfig: AuthConfig;
-
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(User) private readonly userRepository: Repository<User>,
@@ -64,13 +54,9 @@ export class AuthService {
     @InjectRepository(SecurityEvent)
     private readonly securityEventRepository: Repository<SecurityEvent>,
     private readonly passwordService: PasswordService,
-    private readonly tokenService: TokenService,
-    private readonly jwtService: JwtService,
-    configService: ConfigService,
-  ) {
-    this.jwtConfig = configService.get<JwtConfig>('jwt')!;
-    this.authConfig = configService.get<AuthConfig>('auth')!;
-  }
+    private readonly refreshTokenService: RefreshTokenService,
+    private readonly sessionService: SessionService,
+  ) {}
 
   async register(
     dto: RegisterDto,
@@ -113,24 +99,24 @@ export class AuthService {
           manager.create(Session, {
             userId: user.id,
             orgId: organization.id,
+            ip: context.ip ?? null,
+            userAgent: context.userAgent ?? null,
             ipHash: hashClientInfo(context.ip),
             userAgentHash: hashClientInfo(context.userAgent),
             lastSeenAt: now,
           }),
         );
 
-        const tokens = await this.issueTokens(manager, {
-          user,
-          orgId: organization.id,
-          roleId: OWNER_ROLE_ID,
-          session,
-        });
+        const { authTokens } = await this.refreshTokenService.issueTokens(
+          manager,
+          { user, orgId: organization.id, roleId: OWNER_ROLE_ID, session },
+        );
 
-        return { organization, user, tokens };
+        return { organization, user, tokens: authTokens };
       },
     );
 
-    await this.recordSecurityEvent(this.securityEventRepository, {
+    await recordSecurityEvent(this.securityEventRepository, {
       type: SecurityEventType.REGISTER_SUCCEEDED,
       orgId: organization.id,
       userId: user.id,
@@ -145,7 +131,7 @@ export class AuthService {
     const user = await this.userRepository.findOne({ where: { email } });
 
     if (!user) {
-      await this.recordSecurityEvent(this.securityEventRepository, {
+      await recordSecurityEvent(this.securityEventRepository, {
         type: SecurityEventType.LOGIN_FAILED,
         context,
         metadata: { email },
@@ -156,7 +142,7 @@ export class AuthService {
     await this.unlockIfLockoutExpired(user);
 
     if (user.status === UserStatus.LOCKED) {
-      await this.recordSecurityEvent(this.securityEventRepository, {
+      await recordSecurityEvent(this.securityEventRepository, {
         type: SecurityEventType.LOGIN_FAILED,
         userId: user.id,
         context,
@@ -167,7 +153,7 @@ export class AuthService {
       );
     }
     if (user.status === UserStatus.DISABLED) {
-      await this.recordSecurityEvent(this.securityEventRepository, {
+      await recordSecurityEvent(this.securityEventRepository, {
         type: SecurityEventType.LOGIN_FAILED,
         userId: user.id,
         context,
@@ -203,21 +189,27 @@ export class AuthService {
         manager.create(Session, {
           userId: user.id,
           orgId: membership.organizationId,
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
           ipHash: hashClientInfo(context.ip),
           userAgentHash: hashClientInfo(context.userAgent),
           lastSeenAt: now,
         }),
       );
 
-      return this.issueTokens(manager, {
-        user,
-        orgId: membership.organizationId,
-        roleId: membership.roleId,
-        session,
-      });
+      const { authTokens } = await this.refreshTokenService.issueTokens(
+        manager,
+        {
+          user,
+          orgId: membership.organizationId,
+          roleId: membership.roleId,
+          session,
+        },
+      );
+      return authTokens;
     });
 
-    await this.recordSecurityEvent(this.securityEventRepository, {
+    await recordSecurityEvent(this.securityEventRepository, {
       type: SecurityEventType.LOGIN_SUCCEEDED,
       orgId: membership.organizationId,
       userId: user.id,
@@ -227,54 +219,51 @@ export class AuthService {
     return tokens;
   }
 
-  // ── Internos ────────────────────────────────────────────────────────────
-
-  /** Firma el access token JWT y emite/persiste el refresh token opaco de una nueva sesión. */
-  private async issueTokens(
-    manager: EntityManager,
-    input: IssueTokensInput,
-  ): Promise<AuthTokens> {
-    const { user, orgId, roleId, session } = input;
-    const roleName = KNOWN_ROLE_NAMES[roleId] ?? roleId;
-
-    const accessToken = this.jwtService.sign({
-      subject: user.id,
-      jti: randomUUID(),
-      claims: {
-        org: orgId,
-        sid: session.id,
-        // Catálogo de permisos real llega en la Fase 3 (RBAC); hasta
-        // entonces el claim va vacío y no se aplica autorización fina.
-        roles: [roleName],
-        permissions: [],
-        pwd_ver: user.passwordChangedAt.getTime(),
-        token_type: 'access',
-      },
+  /**
+   * Cambia la contraseña del usuario autenticado (paso 12). Revoca todas
+   * sus sesiones: el bump de `passwordChangedAt` invalida de inmediato,
+   * vía el claim `pwd_ver`, cualquier access token emitido antes del
+   * cambio (lo comprueba `SessionGuard`), y la revocación de sesiones
+   * invalida sus refresh tokens.
+   */
+  async changePassword(
+    auth: AuthContext,
+    dto: ChangePasswordDto,
+    context: RequestContext,
+  ): Promise<void> {
+    const user = await this.userRepository.findOne({
+      where: { id: auth.userId },
     });
+    if (!user) {
+      throw new UnauthorizedException('Usuario no disponible');
+    }
 
-    const { token: refreshToken, tokenHash } = this.tokenService.generate();
-    const issuedAt = new Date();
-    const expiresAt = new Date(
-      issuedAt.getTime() + this.authConfig.refreshTokenTtlSeconds * 1000,
+    const currentPasswordValid = await this.passwordService.verify(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+    if (!currentPasswordValid) {
+      throw new UnauthorizedException('Contraseña actual incorrecta');
+    }
+
+    user.passwordHash = await this.passwordService.hash(dto.newPassword);
+    user.passwordChangedAt = new Date();
+    await this.userRepository.save(user);
+
+    await this.sessionService.revokeAllSessions(
+      auth.userId,
+      'password_changed',
     );
 
-    await manager.save(
-      manager.create(RefreshToken, {
-        sessionId: session.id,
-        tokenHash,
-        issuedAt,
-        expiresAt,
-        status: RefreshTokenStatus.ACTIVE,
-      }),
-    );
-
-    return {
-      accessToken,
-      refreshToken,
-      tokenType: 'Bearer',
-      expiresIn: this.jwtConfig.accessTokenTtlSeconds,
-    };
+    await recordSecurityEvent(this.securityEventRepository, {
+      type: SecurityEventType.PASSWORD_CHANGED,
+      orgId: auth.orgId,
+      userId: auth.userId,
+      context,
+    });
   }
+
+  // ── Internos ────────────────────────────────────────────────────────────
 
   /** Si la cuenta está bloqueada pero la ventana de bloqueo ya pasó, la reactiva. */
   private async unlockIfLockoutExpired(user: User): Promise<void> {
@@ -307,13 +296,13 @@ export class AuthService {
     }
     await this.userRepository.save(user);
 
-    await this.recordSecurityEvent(this.securityEventRepository, {
+    await recordSecurityEvent(this.securityEventRepository, {
       type: SecurityEventType.LOGIN_FAILED,
       userId: user.id,
       context,
     });
     if (locked) {
-      await this.recordSecurityEvent(this.securityEventRepository, {
+      await recordSecurityEvent(this.securityEventRepository, {
         type: SecurityEventType.ACCOUNT_LOCKED,
         userId: user.id,
         context,
@@ -377,49 +366,4 @@ export class AuthService {
     }
     return candidate;
   }
-
-  private async recordSecurityEvent(
-    repository: Repository<SecurityEvent>,
-    event: {
-      type: SecurityEventType;
-      orgId?: string;
-      userId?: string;
-      context: RequestContext;
-      metadata?: Record<string, unknown>;
-    },
-  ): Promise<void> {
-    await repository.save(
-      repository.create({
-        type: event.type,
-        orgId: event.orgId ?? null,
-        userId: event.userId ?? null,
-        ip: event.context.ip ?? null,
-        userAgent: event.context.userAgent ?? null,
-        metadata: event.metadata ?? null,
-      }),
-    );
-  }
-}
-
-/** Normaliza un email a minúsculas y sin espacios sobrantes, consistente con el índice único de `User`. */
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-/** SHA-256 en hexadecimal; usado para `Session.ipHash`/`userAgentHash` (nunca se persiste el valor en claro ahí). */
-function hashClientInfo(value: string | undefined): string {
-  return createHash('sha256')
-    .update(value ?? '', 'utf8')
-    .digest('hex');
-}
-
-/** Convierte un nombre libre en un slug de URL: minúsculas, ascii, separado por guiones. */
-function slugify(name: string): string {
-  return name
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '') // quita acentos (marcas diacriticas combinantes tras NFKD)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 200);
 }

@@ -19,6 +19,12 @@ export interface JwtConfig {
 export interface AuthConfig {
   /** Vida del refresh token opaco, en segundos (por defecto 30 días). */
   refreshTokenTtlSeconds: number;
+  /**
+   * Ventana de gracia, en segundos, tras rotar un refresh token durante la
+   * que reintentar el token ya rotado (mismo origen) no se trata como
+   * reutilización/robo, para absorber reintentos de red del propio cliente.
+   */
+  refreshReuseGraceSeconds: number;
 }
 
 export interface AppConfig {
@@ -57,6 +63,9 @@ export const loadConfig = (): AppConfig => ({
   auth: {
     refreshTokenTtlSeconds: Number(
       process.env.REFRESH_TOKEN_TTL_SECONDS ?? 2592000,
+    ),
+    refreshReuseGraceSeconds: Number(
+      process.env.REFRESH_REUSE_GRACE_SECONDS ?? 5,
     ),
   },
 });

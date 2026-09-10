@@ -8,9 +8,14 @@ import { Session } from '../../entities/session.entity';
 import { User } from '../../entities/user.entity';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { RefreshTokenService } from './refresh-token.service';
+import { RevokedSessionCache } from './revoked-session-cache.service';
+import { SessionGuard } from './session.guard';
+import { SessionService } from './session.service';
 
 /**
- * Registro y login (Fase 1, pasos 7-8). `TokenService`, `PasswordService` y
+ * Registro, login, rotación de refresh tokens y gestión de sesiones (Fase
+ * 1, pasos 7-8; Fase 2, pasos 10-12). `TokenService`, `PasswordService` y
  * `JwtService` llegan vía los módulos globales `SecurityModule` y
  * `CryptoModule`; aquí solo se registran las entidades propias del flujo.
  */
@@ -26,6 +31,12 @@ import { AuthService } from './auth.service';
     ]),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [
+    AuthService,
+    RefreshTokenService,
+    SessionService,
+    SessionGuard,
+    RevokedSessionCache,
+  ],
 })
 export class AuthModule {}

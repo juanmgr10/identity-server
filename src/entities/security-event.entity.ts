@@ -11,6 +11,13 @@ export enum SecurityEventType {
   LOGIN_SUCCEEDED = 'login_succeeded',
   LOGIN_FAILED = 'login_failed',
   ACCOUNT_LOCKED = 'account_locked',
+  /** Un refresh token ya rotado (status `rotated`) se presentó de nuevo: posible robo. */
+  REFRESH_REUSE_DETECTED = 'refresh_reuse',
+  /** El usuario revocó una sesión propia desde `POST /auth/sessions`. */
+  SESSION_REVOKED = 'session_revoked',
+  LOGOUT = 'logout',
+  LOGOUT_ALL = 'logout_all',
+  PASSWORD_CHANGED = 'password_changed',
 }
 
 /**
